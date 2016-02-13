@@ -76,12 +76,56 @@ int trace_get_item(struct trace_item **item)
   return 1;
 }
 
+//function to print contents of instruction, takes item and cycle number
+int print_item (struct trace_item **item, int cycle_number)
+{
+	switch((*item)->type) {
+        case ti_NOP:
+          printf("[cycle %d] NOP:",cycle_number) ;
+          break;
+        case ti_RTYPE:
+          printf("[cycle %d] RTYPE:",cycle_number) ;
+          printf(" (PC: %x)(sReg_a: %d)(sReg_b: %d)(dReg: %d) \n", (*item)->PC, (*item)->sReg_a, (*item)->sReg_b, (*item)->dReg);
+          break;
+        case ti_ITYPE:
+          printf("[cycle %d] ITYPE:",cycle_number) ;
+          printf(" (PC: %x)(sReg_a: %d)(dReg: %d)(addr: %x)\n", (*item)->PC, (*item)->sReg_a, (*item)->dReg, (*item)->Addr);
+          break;
+        case ti_LOAD:
+          printf("[cycle %d] LOAD:",cycle_number) ;      
+          printf(" (PC: %x)(sReg_a: %d)(dReg: %d)(addr: %x)\n", (*item)->PC, (*item)->sReg_a, (*item)->dReg, (*item)->Addr);
+          break;
+        case ti_STORE:
+          printf("[cycle %d] STORE:",cycle_number) ;      
+          printf(" (PC: %x)(sReg_a: %d)(sReg_b: %d)(addr: %x)\n", (*item)->PC, (*item)->sReg_a, (*item)->sReg_b, (*item)->Addr);
+          break;
+        case ti_BRANCH:
+          printf("[cycle %d] BRANCH:",cycle_number) ;
+          printf(" (PC: %x)(sReg_a: %d)(sReg_b: %d)(addr: %x)\n", (*item)->PC, (*item)->sReg_a, (*item)->sReg_b, (*item)->Addr);
+          break;
+        case ti_JTYPE:
+          printf("[cycle %d] JTYPE:",cycle_number) ;
+          printf(" (PC: %x)(addr: %x)\n", (*item)->PC, (*item)->Addr);
+          break;
+        case ti_SPECIAL:
+          printf("[cycle %d] SPECIAL:",cycle_number) ;      	
+          break;
+        case ti_JRTYPE:
+          printf("[cycle %d] JRTYPE:",cycle_number) ;
+          printf(" (PC: %x) (sReg_a: %d)(addr: %x)\n", (*item)->PC, (*item)->dReg, (*item)->Addr);
+          break;
+    }
+}
+
 int main(int argc, char **argv)
 {
   struct trace_item *tr_entry;
   size_t size;
   char *trace_file_name;
   int trace_view_on = 0;
+  int i; //use for iterations
+  struct trace_item *buffer[5]; //buffer array for instruction stages
+  buffer[5] = (struct trace_item*)malloc(sizeof(struct trace_item));
   
   unsigned char t_type = 0;
   unsigned char t_sReg_a= 0;
@@ -91,7 +135,8 @@ int main(int argc, char **argv)
   unsigned int t_Addr = 0;
 
   unsigned int cycle_number = 0;
-
+	
+  
   if (argc == 1) {
     fprintf(stdout, "\nUSAGE: tv <trace_file> <switch - any character>\n");
     fprintf(stdout, "\n(switch) to turn on or off individual item view.\n\n");
@@ -112,14 +157,28 @@ int main(int argc, char **argv)
 
   trace_init();
 
+//test to load the first five instructions into buffer and print
+//contents of each instruction in the buffer
+  for (i = 0; i < 5; i++)
+  {
+	trace_get_item(&buffer[i]);
+  }
+  for (i = 0; i < 5; i++)
+  {
+	print_item(&buffer[i], i +1);
+  }  
+  
+
+
+  /*
   while(1) {
     size = trace_get_item(&tr_entry);
    
-    if (!size) {       /* no more instructions (trace_items) to simulate */
+    if (!size) {       // no more instructions (trace_items) to simulate 
       printf("+ Simulation terminates at cycle : %u\n", cycle_number);
       break;
     }
-    else{              /* parse the next instruction to simulate */
+    else{              // parse the next instruction to simulate 
       cycle_number++;
       t_type = tr_entry->type;
       t_sReg_a = tr_entry->sReg_a;
@@ -132,7 +191,7 @@ int main(int argc, char **argv)
 // SIMULATION OF A SINGLE CYCLE cpu IS TRIVIAL - EACH INSTRUCTION IS EXECUTED
 // IN ONE CYCLE
 
-    if (trace_view_on) {/* print the executed instruction if trace_view_on=1 */
+    if (trace_view_on) {/ print the executed instruction if trace_view_on=1 
       switch(tr_entry->type) {
         case ti_NOP:
           printf("[cycle %d] NOP:",cycle_number) ;
@@ -171,7 +230,7 @@ int main(int argc, char **argv)
       }
     }
   }
-
+  */
   trace_uninit();
 
   exit(0);
