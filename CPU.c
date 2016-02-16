@@ -20,6 +20,7 @@ static struct trace_item *trace_buf;
 struct trace_item *buffer[5]; //buffer array for instruction stages
 
 int cycle_number = 0; //initializes the cycle number
+int read_next = 1; //if this is one read next instruction from file
 
 int is_big_endian(void)
 {
@@ -80,7 +81,7 @@ int trace_get_item(struct trace_item **item)
 }
 
 //function to print contents of instruction, takes item and cycle number
-int print_item (struct trace_item **item, int cycle_number)
+int print_item (struct trace_item **item)
 {
 	switch((*item)->type) {
         case ti_NOP:
@@ -126,15 +127,15 @@ int print_buffers()
 	int i;
 	printf("\n\t\t---Cycle Number: %d---\t\t\n", cycle_number);
 	printf("IF STAGE:\t");
-	print_item(&buffer[0], cycle_number);
+	print_item(&buffer[0]);
 	printf("ID STAGE:\t");
-	print_item(&buffer[1], cycle_number);
+	print_item(&buffer[1]);
 	printf("EX STAGE:\t");
-	print_item(&buffer[2], cycle_number);
+	print_item(&buffer[2]);
 	printf("MEM STAGE:\t");
-	print_item(&buffer[3], cycle_number);
+	print_item(&buffer[3]);
 	printf("WB STAGE:\t");
-	print_item(&buffer[4], cycle_number);
+	print_item(&buffer[4]);
 	
 }
 
@@ -148,6 +149,38 @@ int shift_pipe(struct trace_item **incoming)
 	buffer[0] = *incoming;	
 }
 
+//function to check for data hazard and insert stall if necessary
+//returns 1 if there is a stall, 0 if no stall
+int data_hazard(struct trace_item **incoming)
+{
+	
+	//condition for lw stall with r-type instruction following it with dependency
+	if(buffer[0]->type == 3 && (*incoming)->type == 1)
+			if(buffer[0]->dReg == (*incoming)->sReg_a)
+				return 1;
+			else if(buffer[0]->dReg == (*incoming)->sReg_b)
+				return 1;
+	
+	//condition for lw stall with i-type instruction following it with dependency
+	if(buffer[0]->type == 3 && (*incoming)->type == 2)
+			if(buffer[0]->dReg == (*incoming)->sReg_a)
+				return 1;
+				
+	//condition for lw stall with branch instruction following it with dependency
+	if(buffer[0]->type == 3 && (*incoming)->type == 5)
+			if(buffer[0]->dReg == (*incoming)->sReg_a)
+				return 1;
+			else if(buffer[0]->dReg == (*incoming)->sReg_b)
+				return 1;
+				
+	//condition for lw stall with sw instruction following it with dependency
+	if(buffer[0]->type == 3 && (*incoming)->type == 4)
+			if(buffer[0]->dReg == (*incoming)->sReg_a)
+				return 1;
+				
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	struct trace_item *tr_entry;
@@ -155,15 +188,8 @@ int main(int argc, char **argv)
 	char *trace_file_name;
 	int trace_view_on = 0;
 	int i; //use for iterations
+	
 	buffer[5] = (struct trace_item*)malloc(sizeof(struct trace_item*) * 5);
-  
-	unsigned char t_type = 0;
-	unsigned char t_sReg_a= 0;
-	unsigned char t_sReg_b= 0;
-	unsigned char t_dReg= 0;
-	unsigned int t_PC = 0;
-	unsigned int t_Addr = 0;
-
 	
   
 	if (argc == 1) 
@@ -198,38 +224,52 @@ int main(int argc, char **argv)
   
 	//start of simulation
   
-
+	read_next = 1; //if this is one read next instruction from file
 	while(1) 
 	{
-		
-		size = trace_get_item(&tr_entry);
+		//will only read new instruction into tr_entry from the file
+		//only if there was not a stall from previous cycle
+		if(read_next)
+			size = trace_get_item(&tr_entry);
+			
 		// no more instructions (trace_items) to simulate
 		if (!size) 
 		{       
-			printf("+ Simulation terminates at cycle : %u\n", cycle_number);
+			printf("\n+ Simulation terminates at cycle : %u\n", cycle_number);
 			break;
 		}
-		// parse the next instruction to simulate 
+		// parse the next instruction to simulate and check hazards 
 		else
-		{              
-		  t_type = tr_entry->type;
-		  t_sReg_a = tr_entry->sReg_a;
-		  t_sReg_b = tr_entry->sReg_b;
-		  t_dReg = tr_entry->dReg;
-		  t_PC = tr_entry->PC;
-		  t_Addr = tr_entry->Addr;
+		{
+			//check for data_hazard
+			if (data_hazard(&tr_entry))
+			{
+				printf("\n\t\t---DATA HAZARD---\t\t\n");
+				print_item(&tr_entry);
+				printf("\n");
+				shift_pipe(&noOp); //shift pipe with NOOP (STALL)
+				read_next = 0; //indicates the next instruction will not be read
+				//will keep previous tr_entry for next loop to load into pipe
+			}
+			//--insert other hazards here	
+			else //no hazard condition
+			{
+				read_next = 1;
+				shift_pipe(&tr_entry); //shift pipe with new instruction added
+			}
+				
 		}  
 		cycle_number++; //increments cycle number
-		shift_pipe(&tr_entry);
+		
 
 		// print the executed instruction if trace_view_on=1 	
 		if (trace_view_on) 
 			print_buffers();
 	}
-  
-  trace_uninit();
+	
+	trace_uninit();
 
-  exit(0);
+	exit(0);
 }
 
 
