@@ -12,6 +12,7 @@
 #include "trace_item.h" 
 
 #define TRACE_BUFSIZE 1024*1024
+#define PREDICTION_TABLE_SIZE 128
 
 static FILE *trace_fd;
 static int trace_buf_ptr;
@@ -21,6 +22,8 @@ struct trace_item *buffer[5]; //buffer array for instruction stages
 
 int cycle_number = 0; //initializes the cycle number
 int read_next = 1; //if this is one read next instruction from file
+int branch_prediction_table[PREDICTION_TABLE_SIZE];
+int predict_status = 0; //used for 1 bit predictor 0 = predict not taken, 1 = predict taken
 
 int is_big_endian(void)
 {
@@ -191,6 +194,79 @@ int control_hazard_no_predict(struct trace_item **incoming)
 	return 0;
 }
 
+//initializes the branch hash table to -1
+int init_table()
+{
+	int i;
+	for(i = 0; i < PREDICTION_TABLE_SIZE; i++)
+		branch_prediction_table[i] = -1;
+}
+
+//returns 1 if there is a need to kill 2 instructions
+//due to branch resolution in the ex stage
+int control_hazard_predict(struct trace_item **incoming)
+{
+	int index;
+	int check;
+	//if instruction in IF stage is branch check prediction table
+	if(buffer[0]->type == 5)
+	{
+		printf("Branch instruction PC is: %X\n", buffer[0]->PC);
+		//bit masking of 10-4 bits of PC
+		index = (buffer[0]->PC) >> 4;
+		index = index & 0x0000007F; //gets bottom 7 bits
+		printf("Index is %d\n", index);
+		
+		//lookup index
+		check = branch_prediction_table[index];
+		//condition that branch prediction table index has predicted branch before
+		if(check == 1)
+		{
+			//now check if this instruction will branch
+			if((buffer[0]->PC + 4) != (*incoming)->PC) //condition for it will branch
+			{
+				return 0; //no need to stall/squash--predicted correctly
+			}
+			else //condition for branch predictor failed and branch not taken
+			{
+				branch_prediction_table[index] = 0; //update table
+				return 1;
+			}
+		}
+		
+		//condition that branch prediction table index has predicted no branch before
+		else if (check == 0)
+		{
+			//now check if the instruction will not branch
+			if((buffer[0]->PC + 4) == (*incoming)->PC)//condition for no branch
+			{
+				return 0; // no need to stall/squash--predicted correctly
+			}
+			else
+			{
+				branch_prediction_table[index] = 1; //update table
+				return 1; //branch taken when not predicted not taken
+			}
+		}
+		
+		//condition for table index not initialized --predict not taken
+		else
+		{
+			if((buffer[0]->PC + 4) == (*incoming)->PC)//condition for no branch
+			{
+				branch_prediction_table[index] = 0; //update table
+				return 0; //no need to stall because branch predicted not taken
+			}
+			else //condition for branch taken
+			{
+				branch_prediction_table[index] = 1; //update table
+				return 1; //must stall because branch was predicted not taken
+			}
+		}
+	}
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	struct trace_item *tr_entry;
@@ -199,6 +275,7 @@ int main(int argc, char **argv)
 	int trace_view_on = 0;
 	int branch_method = 0;
 	int i; //use for iterations
+	
 	
 	buffer[5] = (struct trace_item*)malloc(sizeof(struct trace_item*) * 5);
 	
@@ -239,8 +316,11 @@ int main(int argc, char **argv)
 	{
 		buffer[i] = noOp;
 	}
-  
-  
+	
+	//initialize branch prediction table if branch predict mode is on
+	if (branch_method == 1)
+		init_table();
+		
 	//start of simulation
   
 	read_next = 1; //if this is one read next instruction from file
@@ -274,18 +354,29 @@ int main(int argc, char **argv)
 			{
 				if(trace_view_on)
 					printf("\n\t\t---CONTROL HAZARD---\t\t\n");
-				shift_pipe(&noOp);
+				shift_pipe(&noOp); //inserts squashed
 				cycle_number++; //counts for cycle inbetween
 				if(trace_view_on)
 					print_buffers();
 				
-				shift_pipe(&noOp);//inserts second stall
+				shift_pipe(&noOp);//inserts second squashed
 				read_next = 0;
 			}
-			//--insert other hazards here	
+			else if(control_hazard_predict(&tr_entry) && branch_method == 1)
+			{
+				if(trace_view_on)
+					printf("\n\t\t---CONTROL HAZARD---\t\t\n");
+				shift_pipe(&noOp); //inserts squashed
+				cycle_number++; //counts for cycle inbetween
+				if(trace_view_on)
+					print_buffers();
+				
+				shift_pipe(&noOp);//inserts second squashed
+				read_next = 0;
+			}
 			else //no hazard condition
 			{
-				read_next = 1;
+				read_next = 1; //enables the next instruction to be read from file
 				shift_pipe(&tr_entry); //shift pipe with new instruction added
 			}
 				
