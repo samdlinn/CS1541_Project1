@@ -181,12 +181,23 @@ int data_hazard(struct trace_item **incoming)
 	return 0;
 }
 
+//returns 1 if there is a control hazard with no prediction method
+int control_hazard_no_predict(struct trace_item **incoming)
+{
+	//there is a control hazard if next instruction incoming is resulted
+	//from branch and the branch is taken (due to predicting not taken)
+	if(buffer[0]->type == 5 && (*incoming)->PC != (buffer[0]->PC + 4))
+		return 1;
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	struct trace_item *tr_entry;
 	size_t size;
 	char *trace_file_name;
 	int trace_view_on = 0;
+	int branch_method = 0;
 	int i; //use for iterations
 	
 	buffer[5] = (struct trace_item*)malloc(sizeof(struct trace_item*) * 5);
@@ -200,8 +211,16 @@ int main(int argc, char **argv)
 	}
     
 	trace_file_name = argv[1];
-	if (argc == 3) trace_view_on = atoi(argv[2]) ;
-
+	
+	//condition for only 3 command line args, branch method set to 0
+	if (argc == 3) trace_view_on = atoi(argv[2]);
+	
+	//takes args [filename] [branch_method] [trace_view_on]
+	if (argc == 4)
+	{
+		branch_method = atoi(argv[2]);
+		trace_view_on = atoi(argv[3]);
+	}
 	fprintf(stdout, "\n ** opening file %s\n", trace_file_name);
 
 	trace_fd = fopen(trace_file_name, "rb");
@@ -244,12 +263,24 @@ int main(int argc, char **argv)
 			//check for data_hazard
 			if (data_hazard(&tr_entry))
 			{
-				printf("\n\t\t---DATA HAZARD---\t\t\n");
-				print_item(&tr_entry);
-				printf("\n");
+				if (trace_view_on)
+					printf("\n\t\t---DATA HAZARD---\t\t\n");
 				shift_pipe(&noOp); //shift pipe with NOOP (STALL)
 				read_next = 0; //indicates the next instruction will not be read
 				//will keep previous tr_entry for next loop to load into pipe
+			}
+			//condition for control hazard with prediction method turned off
+			else if (control_hazard_no_predict(&tr_entry) && branch_method == 0)
+			{
+				if(trace_view_on)
+					printf("\n\t\t---CONTROL HAZARD---\t\t\n");
+				shift_pipe(&noOp);
+				cycle_number++; //counts for cycle inbetween
+				if(trace_view_on)
+					print_buffers();
+				
+				shift_pipe(&noOp);//inserts second stall
+				read_next = 0;
 			}
 			//--insert other hazards here	
 			else //no hazard condition
