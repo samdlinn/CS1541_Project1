@@ -115,7 +115,7 @@ int print_item (struct trace_item **item)
           printf(" (PC: %x)(addr: %x)\n", (*item)->PC, (*item)->Addr);
           break;
         case ti_SPECIAL:
-          printf("SPECIAL:");      	
+          printf("SPECIAL:\n");      	
           break;
         case ti_JRTYPE:
           printf("JRTYPE:");
@@ -267,6 +267,16 @@ int control_hazard_predict(struct trace_item **incoming)
 	return 0;
 }
 
+//returns 1 if there is a jump hazard
+int jump_hazard(struct trace_item **incoming)
+{
+	//there is a jump instruction, must stall 1 cycle to calculate
+	//jump address
+	if(buffer[0]->type == 6)
+		return 1;
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	struct trace_item *tr_entry;
@@ -373,6 +383,14 @@ int main(int argc, char **argv)
 				
 				shift_pipe(&noOp);//inserts second squashed
 				read_next = 0;
+			}
+			else if(jump_hazard(&tr_entry))
+			{
+				if (trace_view_on)
+					printf("\n\t\t---JUMP HAZARD---\t\t\n");
+				shift_pipe(&noOp); //shift pipe with NOOP (STALL)
+				read_next = 0; //indicates the next instruction will not be read
+				//will keep previous tr_entry for next loop to load into pipe
 			}
 			else //no hazard condition
 			{
