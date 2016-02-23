@@ -1,8 +1,11 @@
+//Joel McCoy jvm13@pitt.edu
+//Shmuel Dlinn syd6@pitt.edu
+
 /**************************************************************/
 /* CS/COE 1541				 			
    just compile with gcc -o superscaler superscaler.c			
    and execute using							
-   ./pipeline  /afs/cs.pitt.edu/courses/1541/short_traces/sample.tr	0  
+   ./superscaler  /afs/cs.pitt.edu/courses/1541/short_traces/sample.tr	0  
 ***************************************************************/
 
 #include <stdio.h>
@@ -95,7 +98,10 @@ int print_item (struct trace_item **item)
 {
 	switch((*item)->type) {
         case ti_NOP:
-          printf("NOP\n");
+					if((*item)->Addr == 1)
+						printf("SQUASHED\n");
+					else
+						printf("NOP\n");
           break;
         case ti_RTYPE:
           printf("RTYPE:");
@@ -132,6 +138,7 @@ int print_item (struct trace_item **item)
     return 1;
 }
 
+//method to print the contents of the superscaler pipeline
 int print_buffers() 
 {
 	int i;
@@ -180,12 +187,18 @@ int shift_MEM(struct trace_item **incoming)
 int shift_MEM_special(struct trace_item **incoming)
 {
 	MEM[2] = MEM[1];
-	MEM[1] = *incoming;		
+	MEM[1] = *incoming;
+	//replace a noop with a squashed instruction
+	if(MEM[0]->type == 0)
+		MEM[0]= (*incoming);
+				
 }
 
-//returns 1 when there is a dependency
+//returns 1 when there is a dependency between a lw and
+//another instruction that writes back to register file
 int is_dependent(struct trace_item **lw, struct trace_item **read)
 {
+	//if the instruction type has both a sReg_a and sRegb
 	if((*read)->type == 1 || (*read)->type == 5 || (*read)->type == 4)
 	{
 			if((*lw)->dReg == (*read)->sReg_a || (*lw)->dReg == (*read)->sReg_b)
@@ -193,6 +206,7 @@ int is_dependent(struct trace_item **lw, struct trace_item **read)
 			else
 				return 0;
 	}
+	//if the instruction just has a sReg_a
 	else if((*read)->type == 2 || (*read)->type == 3)
 	{
 			if((*lw)->dReg == (*read)->sReg_a)
@@ -218,17 +232,20 @@ int get_type(struct trace_item **incoming)
 //returns 1 if there is a data hazard
 int check_data_hazard()
 {
-			if(REG[0]->type == 3)
+		//if the reg[0] contains a lw
+		if(REG[0]->type == 3)
+		{
+			//check dependency
+			if(is_dependent(&REG[0], &REG[1]))
 			{
-				if(is_dependent(&REG[0], &REG[1]))
-				{
-						return 1;
-				}
+					return 1;
 			}
-			return 0;
+		}
+		return 0;
 }
 
 //return 1 if branch is taken
+//takes previous instruction and current instruction
 int branch_taken(struct trace_item **prev, struct trace_item **cur)
 {
 	if(((*prev)->PC - 4) == (*cur)->PC)
@@ -237,23 +254,26 @@ int branch_taken(struct trace_item **prev, struct trace_item **cur)
 		return 1;
 }
 
+//handles control hazard detection without prediction
 int check_branch_no_predict()
 {
+		//
 		if(ALU[0]->type == 5)
 		{
-				//case if the instruction is in the IF_ID stage
-
-					
+					//case if the next instruction is in the IF_ID stage	
 					if(mem_after_branch_flag)
 					{
+							//checks if branch is taken
 							if(branch_taken(&REG[0], &ALU[0]))
 							{
 								return 1;
 							}
 							
 					}
+					//case if the next instruction is in the mem stage
 					else
 					{
+							//checks if the branch is taken
 							if(branch_taken(&MEM[0], &ALU[0]))
 							{
 								return 2;
@@ -263,9 +283,11 @@ int check_branch_no_predict()
 		return 0;
 }
 
+
+//uses branch prediction to check data hazard
 int check_branch_predict()
 {
-		int index;
+		int index;//used to index table
 		int check;
 		
 		//if instruction in ALU(0) stage is branch check prediction table
@@ -325,7 +347,7 @@ int check_branch_predict()
 		return 0;
 }
 
-
+//method to inititialize branch prediction table with -1
 int init_table()
 {
 	int i;
@@ -333,7 +355,7 @@ int init_table()
 		branch_prediction_table[i] = -1;
 }
 
-//returns 1 if there is a jump hazard
+//returns 1 if there is a jump hazard being a jump or jrtype instruction
 int jump_hazard()
 {
 	if(ALU[0]->type == 6 || ALU[0]->type == 8)
@@ -350,7 +372,6 @@ int main(int argc, char **argv)
 	char *trace_file_name;
 	int branch_method = 0;
 	int i; //use for iterations
-	int hazard;
 	
 	
 	IF_ID[2] = (struct trace_item*)malloc(sizeof(struct trace_item*) * 2);
@@ -401,6 +422,9 @@ int main(int argc, char **argv)
 		MEM[i] = noOp;
 	}
 	
+	struct trace_item* squashed = (struct trace_item*)malloc(sizeof(struct trace_item*));
+	squashed->Addr = 1;
+	
 	//initialize branch prediction table if branch predict mode is on
 	if (branch_method == 1)
 		init_table();
@@ -411,6 +435,7 @@ int main(int argc, char **argv)
 	read_next2 = 1;
 	while(1) 
 	{
+		//flag used for determining how to handle branch and jump hazards
 		mem_after_branch_flag = 0;
 		//will only read new instruction into tr_entry from the file
 		//only if there was not a stall from previous cycle
@@ -442,88 +467,102 @@ int main(int argc, char **argv)
 		// parse the next instruction to simulate and check hazards 
 		else
 		{
-			hazard = 0;
-			
-			
 			//insert hazard conditions here
 			
+			//check for jump hazard
 			if(jump_hazard())
 			{
-				if(trace_view_on)
+				//condition for no instruction in mem stage yet
+				if(!mem_after_branch_flag) 
+				{
+					if(trace_view_on)
 						printf("\n\t\t---JUMP HAZARD---\t\t\n");
-				shift_ALU(&noOp);
-				shift_MEM(&noOp);
-				cycle_number++;
-				if(trace_view_on)
-					print_buffers();
-				shift_ALU(&noOp);
-				shift_MEM(&noOp);
-			}
-			else if(check_branch_no_predict() == 2 && !branch_method)
-			{
-				if(trace_view_on)
+					shift_ALU(&squashed);
+					shift_MEM(&squashed);
+					cycle_number++;
+					if(trace_view_on)
+						print_buffers();
+					shift_ALU(&squashed);
+					shift_MEM(&squashed);
+				}
+				//condition for instruction in mem stage already
+				//must squash mem stage with special method
+				else
+				{
+					if(trace_view_on)
 					printf("\n\t\t---JUMP HAZARD---\t\t\n");
-				shift_ALU(&noOp);
-				shift_MEM_special(&noOp);
-				cycle_number++;
-				if(trace_view_on)
-					print_buffers();
-				shift_ALU(&noOp);
-				shift_MEM_special(&noOp);
+					shift_ALU(&squashed);
+					shift_MEM_special(&squashed);
+					cycle_number++;
+					if(trace_view_on)
+						print_buffers();
+					shift_ALU(&squashed);
+					shift_MEM_special(&squashed);
+				}
+				
 			}
-			
-			//case for a branch condition
+			//case for a branch condition and no current instruction in mem stage
+			//squash two instructions
+			//does not use prediction
 			else if(check_branch_no_predict() == 1 && !branch_method)
 			{
 				if(trace_view_on)
 						printf("\n\t\t---CONTROL HAZARD---\t\t\n");
-				shift_ALU(&noOp);
-				shift_MEM(&noOp);
+				shift_ALU(&squashed);
+				shift_MEM(&squashed);
 				cycle_number++;
 				if(trace_view_on)
 					print_buffers();
-				shift_ALU(&noOp);
-				shift_MEM(&noOp);
+				shift_ALU(&squashed);
+				shift_MEM(&squashed);
 			}
+			//condition control branch hazard and special squash method
+			//for the hazard
+			//does not use prediction
 			else if(check_branch_no_predict() == 2 && !branch_method)
 			{
 				if(trace_view_on)
 					printf("\n\t\t---CONTROL HAZARD---\t\t\n");
-				shift_ALU(&noOp);
-				shift_MEM_special(&noOp);
+				shift_ALU(&squashed);
+				shift_MEM_special(&squashed);
 				cycle_number++;
 				if(trace_view_on)
 					print_buffers();
-				shift_ALU(&noOp);
-				shift_MEM_special(&noOp);
+				shift_ALU(&squashed);
+				shift_MEM_special(&squashed);
 			}
+			//handles branch conditions with prediction
 			else if(check_branch_predict() && branch_method)
 			{
+					//condition for hazard and no instruction in mem stage
 					if(check_branch_no_predict() == 1)
 					{
 						if(trace_view_on)
 							printf("\n\t\t---CONTROL HAZARD---\t\t\n");
-						shift_ALU(&noOp);
-						shift_MEM(&noOp);
+						shift_ALU(&squashed);
+						shift_MEM(&squashed);
 						cycle_number++;
 						if(trace_view_on)
 							print_buffers();
-						shift_ALU(&noOp);
-						shift_MEM(&noOp);
+						shift_ALU(&squashed);
+						shift_MEM(&squashed);
 					}
+					//condition for hazard and instruction in mem stage
+					//must use shift special
 					else if(check_branch_no_predict() == 2)
 					{
 						if(trace_view_on)
 							printf("\n\t\t---CONTROL HAZARD---\t\t\n");
-						shift_ALU(&noOp);
-						shift_MEM(&noOp);
+						shift_ALU(&squashed);
+						shift_MEM(&squashed);
 						cycle_number++;
 						if(trace_view_on)
 							print_buffers();
-						shift_ALU(&noOp);
-						shift_MEM(&noOp);
+						shift_ALU(&squashed);
+						shift_MEM_special(&squashed);
 					}
 			}
+			//checks for data hazards with lw
 			else if(check_data_hazard())
 			{
 					//case for first pipe has a lw

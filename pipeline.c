@@ -1,3 +1,6 @@
+//Joel McCoy jvm13@pitt.edu
+//Shmuel Dlinn syd6@pitt.edu
+
 /**************************************************************/
 /* CS/COE 1541				 			
    just compile with gcc -o pipeline pipeline.c			
@@ -88,7 +91,10 @@ int print_item (struct trace_item **item)
 {
 	switch((*item)->type) {
         case ti_NOP:
-          printf("NOP\n");
+          if((*item)->Addr == 1)
+						printf("SQUASHED\n");
+					else
+						printf("NOP\n");
           break;
         case ti_RTYPE:
           printf("RTYPE:");
@@ -326,6 +332,10 @@ int main(int argc, char **argv)
 		buffer[i] = noOp;
 	}
 	
+	//used for printing out a squashed instruction
+	struct trace_item* squashed = (struct trace_item*)malloc(sizeof(struct trace_item*));
+	squashed->Addr = 1;
+	
 	//initialize branch prediction table if branch predict mode is on
 	if (branch_method == 1)
 		init_table();
@@ -363,35 +373,35 @@ int main(int argc, char **argv)
 			{
 				if(trace_view_on)
 					printf("\n\t\t---CONTROL HAZARD---\t\t\n");
-				shift_pipe(&noOp); //inserts squashed
+				shift_pipe(&squashed); //inserts squashed
 				cycle_number++; //counts for cycle inbetween
 				if(trace_view_on)
 					print_buffers();
 				
-				shift_pipe(&noOp);//inserts second squashed
+				shift_pipe(&squashed);//inserts second squashed
 				read_next = 0;
 			}
 			else if(control_hazard_predict(&tr_entry) && branch_method == 1)
 			{
 				if(trace_view_on)
 					printf("\n\t\t---CONTROL HAZARD---\t\t\n");
-				shift_pipe(&noOp); //inserts squashed
+				shift_pipe(&squashed); //inserts squashed
 				cycle_number++; //counts for cycle inbetween
 				if(trace_view_on)
 					print_buffers();
 				
-				shift_pipe(&noOp);//inserts second squashed
+				shift_pipe(&squashed);//inserts second squashed
 				read_next = 0;
 			}
 			else if(jump_hazard(&tr_entry))
 			{
 				if (trace_view_on)
 					printf("\n\t\t---JUMP HAZARD---\t\t\n");
-				shift_pipe(&noOp); //shift pipe with NOOP (STALL)
+				shift_pipe(&squashed); //shift pipe with NOOP (STALL)
 				cycle_number++; //increment cycle number
 				if (trace_view_on)
 					print_buffers();
-				shift_pipe(&noOp);//shifts pipe with second noop
+				shift_pipe(&squashed);//shifts pipe with second noop
 				read_next = 0; //indicates the next instruction will not be read
 				//will keep previous tr_entry for next loop to load into pipe
 			}
