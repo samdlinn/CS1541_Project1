@@ -1,6 +1,6 @@
 /**************************************************************/
 /* CS/COE 1541				 			
-   just compile with gcc -o pipeline pipeline.c			
+   just compile with gcc -o superscaler superscaler.c			
    and execute using							
    ./pipeline  /afs/cs.pitt.edu/courses/1541/short_traces/sample.tr	0  
 ***************************************************************/
@@ -30,7 +30,7 @@ int read_next2 = 1; //if this is one read next instruction from file
 int branch_prediction_table[PREDICTION_TABLE_SIZE];
 int predict_status = 0; //used for 1 bit predictor 0 = predict not taken, 1 = predict taken
 int mem_after_branch_flag; //used for branch hazards
-int trace_view_on = 0;
+int trace_view_on = 0; //used for turning on prints
 
 int is_big_endian(void)
 {
@@ -336,7 +336,7 @@ int init_table()
 //returns 1 if there is a jump hazard
 int jump_hazard()
 {
-	if(ALU[0]->type == 6)
+	if(ALU[0]->type == 6 || ALU[0]->type == 8)
 		return 1;
 		
 	return 0;

@@ -211,11 +211,10 @@ int control_hazard_predict(struct trace_item **incoming)
 	//if instruction in IF stage is branch check prediction table
 	if(buffer[0]->type == 5)
 	{
-		printf("Branch instruction PC is: %X\n", buffer[0]->PC);
 		//bit masking of 10-4 bits of PC
 		index = (buffer[0]->PC) >> 4;
 		index = index & 0x0000007F; //gets bottom 7 bits
-		printf("Index is %d\n", index);
+
 		
 		//lookup index
 		check = branch_prediction_table[index];
@@ -272,7 +271,7 @@ int jump_hazard(struct trace_item **incoming)
 {
 	//there is a jump instruction, must stall 1 cycle to calculate
 	//jump address
-	if(buffer[0]->type == 6)
+	if((buffer[0]->type == 6) || (buffer[0]->type == 8))
 		return 1;
 	return 0;
 }
@@ -389,6 +388,10 @@ int main(int argc, char **argv)
 				if (trace_view_on)
 					printf("\n\t\t---JUMP HAZARD---\t\t\n");
 				shift_pipe(&noOp); //shift pipe with NOOP (STALL)
+				cycle_number++; //increment cycle number
+				if (trace_view_on)
+					print_buffers();
+				shift_pipe(&noOp);//shifts pipe with second noop
 				read_next = 0; //indicates the next instruction will not be read
 				//will keep previous tr_entry for next loop to load into pipe
 			}
