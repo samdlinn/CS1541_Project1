@@ -437,6 +437,14 @@ int main(int argc, char **argv)
 	{
 		//flag used for determining how to handle branch and jump hazards
 		mem_after_branch_flag = 0;
+		//condition for setting mem_after_branch_flag
+		if(get_type(&REG[0]) != get_type(&REG[1]))
+		{
+				if(!get_type(&REG[0]))
+				{
+					mem_after_branch_flag = 1;
+				}
+		}
 		//will only read new instruction into tr_entry from the file
 		//only if there was not a stall from previous cycle
 		if(read_next1)
@@ -554,7 +562,7 @@ int main(int argc, char **argv)
 						if(trace_view_on)
 							printf("\n\t\t---CONTROL HAZARD---\t\t\n");
 						shift_ALU(&squashed);
-						shift_MEM(&squashed);
+						shift_MEM_special(&squashed);
 						cycle_number++;
 						if(trace_view_on)
 							print_buffers();
