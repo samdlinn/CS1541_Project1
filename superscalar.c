@@ -5,7 +5,7 @@
 /* CS/COE 1541				 			
    just compile with gcc -o superscaler superscaler.c			
    and execute using							
-   ./superscaler  /afs/cs.pitt.edu/courses/1541/short_traces/sample.tr	0  
+   ./superscalar  /afs/cs.pitt.edu/courses/1541/short_traces/sample.tr	0  
 ***************************************************************/
 
 #include <stdio.h>
